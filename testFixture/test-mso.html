@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+  MSO Conditional Comments — Extension Development Host Test File
+  ===============================================================
+  Use Ctrl+G (Go to Line) to jump to any section.
+
+  HOW TO TEST:
+    1. Press F5 in the repo root to launch the Extension Development Host.
+    2. Open this file in the Extension Development Host window.
+    3. Follow the instructions in each section.
+
+  SECTIONS:
+    Section 1 (line ~25)  — Valid downlevel-hidden openers
+    Section 2 (line ~65)  — Valid downlevel-revealed openers
+    Section 3 (line ~95)  — Invalid / erroneous conditionals
+    Section 4 (line ~125) — Nested / matched pairs (matching rule)
+    Section 5 (line ~175) — Completion trigger spots
+    Section 6 (line ~195) — Closers
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MSO Conditional Comments Test</title>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 1 — Valid downlevel-hidden openers
+     EXPECTED: Hover shows "downlevel-hidden (shown only in Outlook)"
+                and "Applies to: <translation>"
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Test 1a: any Outlook — hover over "<!--[if mso]>" below -->
+<!--[if mso]>
+  <table width="600" role="presentation"><tr><td>
+<![endif]-->
+
+<!-- Test 1b: Outlook 2016+ — hover over "<!--[if gte mso 16]>" -->
+<!--[if gte mso 16]>
+  <div style="mso-element:para-border-div">Outlook 2016+</div>
+<![endif]-->
+
+<!-- Test 1c: Outlook 2010+ — hover over "<!--[if gte mso 14]>" -->
+<!--[if gte mso 14]>
+  <div>Visible in Outlook 2010, 2013, 2016, 2019, and 365</div>
+<![endif]-->
+
+<!-- Test 1d: older than Outlook 2016 — hover over "<!--[if lt mso 16]>" -->
+<!--[if lt mso 16]>
+  <div>Older Outlook clients only</div>
+<![endif]-->
+
+<!-- Test 1e: exact version — hover over "<!--[if mso 12]>" (Outlook 2007 only) -->
+<!--[if mso 12]>
+  <div>Outlook 2007 only</div>
+<![endif]-->
+
+<!-- Test 1f: negated exact version — hover over "<!--[if !mso 12]>" -->
+<!--[if !mso 12]>
+  <div>Not Outlook 2007</div>
+<![endif]-->
+
+<!-- Test 1g: compound AND — hover over "<!--[if (gte mso 9)&(lte mso 15)]>" -->
+<!--[if (gte mso 9)&(lte mso 15)]>
+  <div>Outlook 2000 through 2013</div>
+<![endif]-->
+
+<!-- Test 1h: eq operator — hover over "<!--[if eq mso 16]>" -->
+<!--[if eq mso 16]>
+  <div>Exactly Outlook 2016, 2019, or 365</div>
+<![endif]-->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 2 — Valid downlevel-revealed openers
+     EXPECTED: Hover shows "downlevel-revealed (hidden in Outlook)"
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Test 2a: standard !mso revealed — hover over "<!--[if !mso]><!--" -->
+<!--[if !mso]><!-->
+  <p>This paragraph is HIDDEN from Outlook.</p>
+<!--<![endif]-->
+
+<!-- Test 2b: non-standard revealed opener — hover over "<![if !mso]>" -->
+<![if !mso]>
+  <p>Non-standard revealed — hidden from Outlook.</p>
+<![endif]>
+
+<!-- Test 2c: non-standard any-Outlook revealed — hover over "<![if mso]>" -->
+<![if mso]>
+  <p>Non-standard revealed for any Outlook.</p>
+<![endif]>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 3 — Invalid / erroneous conditionals
+     EXPECTED: Hover shows "⚠️ Invalid syntax: <error description>"
+               ESLint (if eslint-plugin-mso-conditionals is configured) also reports errors.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Test 3a: typo "mos" instead of "mso" — hover over "<!--[if mos]>" -->
+<!--[if mos]>
+  <div>This has a typo — "mos" should be "mso".</div>
+<![endif]-->
+
+<!-- Test 3b: invalid version 13 (MSO 13 does not exist) — hover over "<!--[if mso 13]>" -->
+<!--[if mso 13]>
+  <div>MSO 13 does not exist — version gap between 12 and 14.</div>
+<![endif]-->
+
+<!-- Test 3c: operator without version — hover over "<!--[if gte mso]>" -->
+<!--[if gte mso]>
+  <div>Operator requires a version number.</div>
+<![endif]-->
+
+<!-- Test 3d: unknown operator — hover over "<!--[if newer mso 16]>" -->
+<!--[if newer mso 16]>
+  <div>Unknown operator "newer".</div>
+<![endif]-->
+
+<!-- Test 3e: compound with invalid sub-part — hover over "<!--[if (gte mso 9)&(mso 13)]>" -->
+<!--[if (gte mso 9)&(mso 13)]>
+  <div>Compound with invalid version 13.</div>
+<![endif]-->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 4 — Nested and matched pairs
+     EXPECTED (with eslint-plugin-mso-conditionals): no errors for valid nesting,
+              errors reported for unmatched opens/closes.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Test 4a: simple matched pair -->
+<!--[if mso]>
+  <table role="presentation" width="600">
+<![endif]-->
+  <tr><td>Content</td></tr>
+<!--[if mso]>
+  </table>
+<![endif]-->
+
+<!-- Test 4b: two-level nesting -->
+<!--[if mso]>
+  <!--[if gte mso 14]>
+    <div class="outlook-2010-plus">Outlook 2010 and newer</div>
+  <![endif]-->
+  <div class="any-outlook">Any Outlook</div>
+<![endif]-->
+
+<!-- Test 4c: revealed block nested inside a hidden block -->
+<!--[if mso]>
+  <div class="hidden-mso">
+<!--<![endif]-->
+<!--[if !mso]><!-->
+  <div class="revealed-non-mso">This is visible outside Outlook</div>
+<!--<![endif]-->
+<!--[if mso]>
+  </div>
+<![endif]-->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 5 — Completion trigger spots
+     EXPECTED: Type <!--[ or <![ on any of the blank lines below.
+               A completion dropdown should appear with 7 MSO snippet options.
+               Press Ctrl+Space if the dropdown doesn't appear automatically.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Completion test 5a: place cursor after <!--[ below and trigger completion -->
+<!-- Try typing: <!--[   (then select from the dropdown) -->
+
+<!-- Completion test 5b: non-standard opener completion -->
+<!-- Try typing: <![   (then select from the dropdown) -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 6 — Closers
+     EXPECTED: Hover shows "MSO Conditional — closer" and
+               "Closes the nearest open [if …] block above."
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Test 6a: standard downlevel-hidden closer — hover over "<![endif]-->" -->
+<!--[if mso]><div><![endif]-->
+
+<!-- Test 6b: standard downlevel-revealed closer — hover over "<!--<![endif]-->" -->
+<!--[if !mso]><!-->
+  <p>revealed content</p>
+<!--<![endif]-->
+
+<!-- Test 6c: non-standard revealed closer — hover over "<![endif]>" -->
+<![if mso]>
+  <div>non-standard block</div>
+<![endif]>
+
+</body>
+</html>

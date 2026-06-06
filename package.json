@@ -1,0 +1,93 @@
+{
+    "name": "mso-conditionals",
+    "displayName": "MSO Conditional Comments",
+    "description": "IntelliSense for MSO (Outlook) conditional comments in HTML email — hover translations, completions, and more.",
+    "version": "1.0.0",
+    "publisher": "joernberkefeld",
+    "author": "Jörn Berkefeld",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/JoernBerkefeld/vscode-mso-conditionals.git"
+    },
+    "bugs": {
+        "url": "https://github.com/JoernBerkefeld/vscode-mso-conditionals/issues"
+    },
+    "homepage": "https://github.com/JoernBerkefeld/vscode-mso-conditionals#readme",
+    "categories": [
+        "Programming Languages",
+        "Snippets",
+        "Other"
+    ],
+    "keywords": [
+        "mso",
+        "outlook",
+        "email",
+        "conditional-comments",
+        "html-email",
+        "hover"
+    ],
+    "engines": {
+        "vscode": "^1.101.0"
+    },
+    "activationEvents": [
+        "onLanguage:html",
+        "onLanguage:ampscript",
+        "onLanguage:sfmc",
+        "onLanguage:ssjs",
+        "onLanguage:handlebars"
+    ],
+    "contributes": {
+        "configuration": {
+            "title": "MSO Conditional Comments",
+            "properties": {
+                "msoConditionals.diagnostics.enable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show inline errors and warnings for invalid MSO conditions and unmatched pairs. Disable if you prefer to get the same diagnostics from eslint-plugin-mso-conditionals instead."
+                }
+            }
+        }
+    },
+    "main": "./out/extension.js",
+    "scripts": {
+        "vscode:prepublish": "npm run build",
+        "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+        "build:dev": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+        "compile": "tsc -p tsconfig.json --noEmit",
+        "lint": "eslint src",
+        "lint:fix": "eslint --fix src",
+        "test": "node --test test/extension.test.mjs",
+        "prepare": "husky || true",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "dependencies": {
+        "mso-conditional-parser": "file:../mso-conditional-parser"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/node": "^22.0.0",
+        "@types/vscode": "^1.101.0",
+        "esbuild": "^0.25.0",
+        "eslint": "^10.1.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-jsdoc": "^62.0.0",
+        "eslint-plugin-prettier": "^5.5.0",
+        "eslint-plugin-unicorn": "^64.0.0",
+        "globals": "^17.4.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.0.5",
+        "prettier": "^3.8.2",
+        "typescript": "^5.8.3",
+        "typescript-eslint": "^8.60.1"
+    },
+    "lint-staged": {
+        "*.{ts,js,mjs}": [
+            "eslint --fix"
+        ]
+    },
+    "volta": {
+        "node": "22.15.0"
+    }
+}
