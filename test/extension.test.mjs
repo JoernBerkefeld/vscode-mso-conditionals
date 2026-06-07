@@ -157,64 +157,60 @@ describe('hover — additional regex detection', () => {
 
 /**
  * Pure-JS mirror of the hover.ts buildHover function.
- * Uses a plain string accumulator to verify Markdown output shape.
+ * Returns null when the parsed result is invalid (no hover shown for invalid openers).
  *
  * @param {object} parsed - Result from parseMsoComment.
- * @param {string} raw - Raw MSO comment string.
- * @returns {string} Markdown content string.
+ * @returns {string|null} Markdown content string, or null for invalid openers.
  */
-function buildHoverContent(parsed, raw) {
-    const typeLabel =
-        parsed.type === 'downlevel-hidden'
-            ? 'downlevel-hidden (shown only in Outlook)'
-            : 'downlevel-revealed (hidden in Outlook)';
+function buildHoverContent(parsed) {
+    if (!parsed.isValid) {
+        return null;
+    }
 
-    let md = `**MSO Conditional — ${typeLabel}**\n\n`;
-
-    md += parsed.isValid
-        ? `**Applies to:** ${parsed.translation}\n\n`
-        : `⚠️ **Invalid syntax:** ${parsed.error ?? 'unknown error'}\n\n`;
-
-    md += `**Condition:** \`${parsed.condition}\`\n\n`;
-    md += `**Raw:** \`${raw}\``;
-    return md;
+    return `**MSO Conditional** — **Visible to:** ${parsed.translation}`;
 }
 
 describe('hover — buildHover Markdown content', () => {
-    it('valid downlevel-hidden opener includes "Applies to:"', () => {
-        const raw = '<!--[if gte mso 16]>';
-        const parsed = parseMsoComment(raw);
-        const content = buildHoverContent(parsed, raw);
-        assert.ok(content.includes('**Applies to:**'));
+    it('valid opener includes "Visible to:"', () => {
+        const parsed = parseMsoComment('<!--[if gte mso 16]>');
+        const content = buildHoverContent(parsed);
+        assert.ok(content.includes('**Visible to:**'));
     });
 
-    it('valid downlevel-hidden opener includes type label', () => {
-        const raw = '<!--[if mso]>';
-        const parsed = parseMsoComment(raw);
-        const content = buildHoverContent(parsed, raw);
-        assert.ok(content.includes('downlevel-hidden (shown only in Outlook)'));
+    it('valid opener includes the translation', () => {
+        const parsed = parseMsoComment('<!--[if gte mso 16]>');
+        const content = buildHoverContent(parsed);
+        assert.ok(content.includes('2016'));
     });
 
-    it('revealed opener <!--[if !mso]><!-- includes downlevel-revealed type label', () => {
-        const raw = '<!--[if !mso]><!--';
-        const parsed = parseMsoComment(raw);
-        const content = buildHoverContent(parsed, raw);
-        assert.ok(content.includes('downlevel-revealed (hidden in Outlook)'));
+    it('valid opener heading is "**MSO Conditional**"', () => {
+        const parsed = parseMsoComment('<!--[if mso]>');
+        const content = buildHoverContent(parsed);
+        assert.ok(content.includes('**MSO Conditional**'));
     });
 
-    it('invalid opener includes "⚠️ **Invalid syntax:**"', () => {
-        const raw = '<!--[if mos]>';
-        const parsed = parseMsoComment(raw);
-        const content = buildHoverContent(parsed, raw);
-        assert.ok(content.includes('⚠️ **Invalid syntax:**'));
+    it('valid opener does not include type label', () => {
+        const parsed = parseMsoComment('<!--[if mso]>');
+        const content = buildHoverContent(parsed);
+        assert.equal(content.includes('downlevel'), false);
     });
 
-    it('all cases include "**Raw:**"', () => {
-        for (const raw of ['<!--[if mso]>', '<!--[if !mso]><!--', '<!--[if mos]>']) {
-            const parsed = parseMsoComment(raw);
-            const content = buildHoverContent(parsed, raw);
-            assert.ok(content.includes('**Raw:**'), `"**Raw:**" missing for ${raw}`);
-        }
+    it('valid opener does not include "Raw:"', () => {
+        const parsed = parseMsoComment('<!--[if mso]>');
+        const content = buildHoverContent(parsed);
+        assert.equal(content.includes('**Raw:**'), false);
+    });
+
+    it('invalid opener returns null (no hover)', () => {
+        const parsed = parseMsoComment('<!--[if mos]>');
+        const content = buildHoverContent(parsed);
+        assert.equal(content, null);
+    });
+
+    it('revealed opener includes correct translation', () => {
+        const parsed = parseMsoComment('<!--[if !mso]><!--');
+        const content = buildHoverContent(parsed);
+        assert.ok(content.includes('non-Outlook'));
     });
 });
 
