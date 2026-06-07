@@ -32,7 +32,7 @@ export class MsoHoverProvider implements vscode.HoverProvider {
             if (position.character >= start && position.character <= end) {
                 const parsed = parseMsoComment(match[0]);
                 if (parsed) {
-                    return buildHover(parsed, match[0]);
+                    return buildHover(parsed);
                 }
             }
         }
@@ -60,33 +60,22 @@ export class MsoHoverProvider implements vscode.HoverProvider {
 
 /**
  * Builds a hover MarkdownString from a parsed MSO opener result.
+ * Returns undefined for invalid openers so the diagnostic squiggle
+ * message is the only hover shown.
  *
  * @param parsed - Parsed result from parseMsoComment.
- * @param raw - Raw MSO comment string.
- * @returns VS Code Hover instance.
+ * @returns VS Code Hover instance, or undefined when the condition is invalid.
  */
 function buildHover(
     parsed: NonNullable<ReturnType<typeof parseMsoComment>>,
-    raw: string,
-): vscode.Hover {
-    const md = new vscode.MarkdownString();
-    md.isTrusted = true;
-
-    const typeLabel =
-        parsed.type === 'downlevel-hidden'
-            ? 'downlevel-hidden (shown only in Outlook)'
-            : 'downlevel-revealed (hidden in Outlook)';
-
-    md.appendMarkdown(`**MSO Conditional — ${typeLabel}**\n\n`);
-
-    if (parsed.isValid) {
-        md.appendMarkdown(`**Applies to:** ${parsed.translation}\n\n`);
-    } else {
-        md.appendMarkdown(`⚠️ **Invalid syntax:** ${parsed.error ?? 'unknown error'}\n\n`);
+): vscode.Hover | undefined {
+    if (!parsed.isValid) {
+        return undefined;
     }
 
-    md.appendMarkdown(`**Condition:** \`${parsed.condition}\`\n\n`);
-    md.appendMarkdown(`**Raw:** \`${raw}\``);
+    const md = new vscode.MarkdownString();
+    md.isTrusted = true;
+    md.appendMarkdown(`**MSO Conditional** — **Visible to:** ${parsed.translation}`);
 
     return new vscode.Hover(md);
 }
