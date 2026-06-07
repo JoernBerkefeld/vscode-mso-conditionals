@@ -245,7 +245,7 @@ describe('diagnostics-core — scanDocument', () => {
         const result = scanDocument(lines);
         assert.equal(result.length, 1);
         assert.equal(result[0].severity, 'error');
-        assert.ok(result[0].message.toLowerCase().includes('typo'));
+        assert.ok(result[0].message.includes("'mso', not 'mos'"));
     });
 
     it('returns a warning for an unclosed opener', () => {

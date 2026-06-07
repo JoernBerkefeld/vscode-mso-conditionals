@@ -44,7 +44,7 @@
                 "msoConditionals.diagnostics.enable": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show inline errors and warnings for invalid MSO conditions and unmatched pairs. Disable if you prefer to get the same diagnostics from eslint-plugin-mso-conditionals instead."
+                    "description": "Show inline errors and warnings for invalid MSO conditions and unmatched pairs. Disable if you prefer to get the same diagnostics from eslint-plugin-mso instead."
                 }
             }
         }

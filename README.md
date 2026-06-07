@@ -46,7 +46,7 @@ HTML, AMP, SSJS, AMPscript, and Handlebars files (any file VS Code identifies as
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `msoConditionals.diagnostics.enable` | boolean | `true` | Show inline errors and warnings. Disable if you prefer diagnostics from [`eslint-plugin-mso-conditionals`](https://www.npmjs.com/package/eslint-plugin-mso-conditionals) instead. |
+| `msoConditionals.diagnostics.enable` | boolean | `true` | Show inline errors and warnings. Disable if you prefer diagnostics from [`eslint-plugin-mso`](https://www.npmjs.com/package/eslint-plugin-mso) instead. |
 
 ## Valid Outlook versions
 
@@ -72,7 +72,7 @@ HTML, AMP, SSJS, AMPscript, and Handlebars files (any file VS Code identifies as
 
 ## Companion tools
 
-- **[eslint-plugin-mso-conditionals](https://www.npmjs.com/package/eslint-plugin-mso-conditionals)** — get the same validation in CI or in editors without this extension.
+- **[eslint-plugin-mso](https://www.npmjs.com/package/eslint-plugin-mso)** — lint MSO conditionals, MSO CSS, VML, and layout tables in CI or in editors without this extension.
 - **[mso-conditional-parser](https://www.npmjs.com/package/mso-conditional-parser)** — the underlying parser, usable as a standalone npm package.
 
 ## License
