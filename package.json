@@ -60,6 +60,7 @@
         "test": "node --test test/extension.test.mjs",
         "prepare": "husky || true",
         "format": "prettier --write .",
+        "package": "npx @vscode/vsce package --no-dependencies",
         "format:check": "prettier --check ."
     },
     "dependencies": {
