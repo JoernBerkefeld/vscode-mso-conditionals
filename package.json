@@ -64,7 +64,7 @@
         "format:check": "prettier --check ."
     },
     "dependencies": {
-        "mso-conditional-parser": "^1.0.0"
+        "mso-conditional-parser": "^1.1.0"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
