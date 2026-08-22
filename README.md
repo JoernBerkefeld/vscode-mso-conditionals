@@ -75,6 +75,17 @@ HTML, AMP, SSJS, AMPscript, and Handlebars files (any file VS Code identifies as
 - **[eslint-plugin-mso-email](https://www.npmjs.com/package/eslint-plugin-mso-email)** — lint MSO conditionals, MSO CSS, VML, and layout tables in CI or in editors without this extension.
 - **[mso-conditional-parser](https://www.npmjs.com/package/mso-conditional-parser)** — the underlying parser, usable as a standalone npm package.
 
+## Telemetry
+
+This extension sends anonymous usage telemetry to help prioritise improvements. It records only:
+
+- **Activation** — that the extension started, plus which known SFMC-related extensions are installed alongside it (booleans only).
+- **Diagnostics usage** — how many times MSO diagnostics ran and the total number of diagnostics produced (counts only — never your file contents, comments, or any identifiers). This aggregate is sent at most every five minutes, and once more on shutdown if a non-empty aggregate remains.
+
+No personally identifiable information, file contents, or credentials are ever collected. Events are anonymous (keyed by VS Code's stable, non-PII machine id) and sent to a PostHog project hosted in the EU. The full event catalogue is in [`telemetry.json`](./telemetry.json).
+
+Telemetry is governed **solely** by VS Code's global telemetry setting. To opt out, set `telemetry.telemetryLevel` to `off` in your settings — the extension checks this before every send and stops immediately when it changes.
+
 ## License
 
 MIT

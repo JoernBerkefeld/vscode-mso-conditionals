@@ -1,0 +1,113 @@
+{
+    "commonProperties": {
+        "extension": {
+            "classification": "SystemMetaData",
+            "purpose": "FeatureInsight",
+            "comment": "Short name of the emitting extension."
+        },
+        "extensionVersion": {
+            "classification": "SystemMetaData",
+            "purpose": "FeatureInsight",
+            "comment": "Version of the emitting extension."
+        },
+        "os": {
+            "classification": "SystemMetaData",
+            "purpose": "FeatureInsight",
+            "comment": "Host operating-system platform."
+        },
+        "vscodeVersion": {
+            "classification": "SystemMetaData",
+            "purpose": "FeatureInsight",
+            "comment": "Host editor version."
+        },
+        "distinct_id": {
+            "classification": "EndUserPseudonymizedInformation",
+            "purpose": "FeatureInsight",
+            "comment": "Stable pseudonymous VS Code machine identifier used to distinguish installations without identifying who the user is."
+        },
+        "$process_person_profile": {
+            "classification": "SystemMetaData",
+            "purpose": "FeatureInsight",
+            "comment": "Always false so PostHog does not create person profiles."
+        }
+    },
+    "events": {
+        "extension.activated": {
+            "owner": "joernberkefeld",
+            "comment": "Fired once per enabled session with passive co-installation signals.",
+            "properties": {
+                "coInstalledAsDependency": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether another installed extension lists this extension as a dependency."
+                },
+                "coInstalledInPack": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether another installed extension includes this extension in its pack."
+                },
+                "neighbor.sergey-agadzhanov.ampscript": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether sergey-agadzhanov.ampscript is installed."
+                },
+                "neighbor.FiB.ssjs-vsc": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether FiB.ssjs-vsc is installed."
+                },
+                "neighbor.FiB.beautyAmp": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether FiB.beautyAmp is installed."
+                },
+                "neighbor.sfmc-language": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether joernberkefeld.sfmc-language is installed."
+                },
+                "neighbor.sfmc-devtools": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether Accenture-oss.sfmc-devtools-vscode is installed."
+                },
+                "neighbor.sfmc-data": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether joernberkefeld.sfmc-data is installed."
+                },
+                "neighbor.sfmc-extension-pack": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether joernberkefeld.sfmc-extension-pack is installed."
+                },
+                "neighbor.sfmc-extension-pack-plus": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether joernberkefeld.sfmc-extension-pack-expanded is installed."
+                },
+                "neighbor.markdown-preview-bitbucket-innersource": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether joernberkefeld.markdown-preview-bitbucket-innersource is installed."
+                }
+            }
+        },
+        "diagnostics.run": {
+            "owner": "joernberkefeld",
+            "comment": "Carries a low-frequency aggregate of diagnostic counts, sent at most every five minutes and on shutdown when a non-empty aggregate remains. Never includes document contents or per-run events.",
+            "measures": {
+                "runs": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Number of diagnostic runs included in this aggregate window."
+                },
+                "totalDiagnostics": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Sum of diagnostics produced across those runs."
+                }
+            }
+        }
+    }
+}

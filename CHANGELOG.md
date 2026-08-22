@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.0] — 2026-08-22
+
+### Added
+
+- Anonymous, opt-in-respecting usage telemetry (PostHog EU). Emits `extension.activated` (with ecosystem co-installation booleans) and a low-frequency aggregated `diagnostics.run` event (run count + total diagnostics — counts only, no file contents or identifiers) at most every five minutes and on shutdown when a non-empty aggregate remains. Gated entirely by VS Code's `telemetry.telemetryLevel`; see the new **Telemetry** section in the README and the root `telemetry.json` catalogue.
+
 ## [1.0.0] — 2026-06-07
 
 ### Added

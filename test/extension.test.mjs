@@ -4,11 +4,26 @@
  * the parser package and the regex patterns used in hover/completion are verified.
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { register } from 'node:module';
 import { parseMsoComment, parseMsoEndComment } from 'mso-conditional-parser';
 import { MSO_SNIPPETS, TRIGGER_PREFIX_RE as SNIPPETS_TRIGGER_RE } from '../src/snippets.js';
 import { scanDocument } from '../src/diagnostics-core.js';
+import {
+    createDiagnosticsSession,
+    EMITTED_EVENTS,
+    EVENT_ACTIVATED,
+    EVENT_DIAGNOSTICS_RUN,
+    EVENT_MEASURES,
+    EVENT_PROPERTIES,
+} from '../src/telemetry-session.js';
+import { DIAGNOSTICS_HANDOFF_INTERVAL_MS, unrefIfSupported } from '../src/diagnostics-timer.ts';
+
+// Redirect the bare `vscode` specifier to the local stub so telemetry.ts (which imports
+// `vscode`) can be loaded host-free. Must run before the dynamic import of telemetry.ts below.
+register('./vscode-loader.mjs', import.meta.url);
 
 // ── Hover logic — MSO_OPEN_RE ─────────────────────────────────────────────
 
@@ -23,6 +38,21 @@ const MSO_CLOSE_RE = /(?:<!--)?<!\[endif\]-->|<!\[endif\]>/g;
  * @param {number} col - Cursor column.
  * @returns {{ raw: string } | null} Match object or null.
  */
+/**
+ * Build a host-free text-document stub for the extension integration tests.
+ *
+ * @param {string[]} lines - Document lines.
+ * @returns {{ languageId: string, uri: string, lineCount: number, lineAt: (index: number) => { text: string } }} Stub document.
+ */
+function document(lines) {
+    return {
+        languageId: 'html',
+        uri: `test:${Math.random()}`,
+        lineCount: lines.length,
+        lineAt: (index) => ({ text: lines[index] }),
+    };
+}
+
 function findHoverMatch(line, col) {
     MSO_OPEN_RE.lastIndex = 0;
     let match;
@@ -245,7 +275,7 @@ describe('diagnostics-core — scanDocument', () => {
         const result = scanDocument(lines);
         assert.equal(result.length, 1);
         assert.equal(result[0].severity, 'error');
-        assert.ok(result[0].message.includes("'mso', not 'mos'"));
+        assert.ok(result[0].message.includes("Typo detected: 'mos' should be 'mso'"));
     });
 
     it('returns a warning for an unclosed opener', () => {
@@ -323,5 +353,394 @@ describe('completion — MSO_SNIPPETS shape', () => {
         assert.ok(SNIPPETS_TRIGGER_RE.test('<!--['));
         assert.ok(SNIPPETS_TRIGGER_RE.test('<!['));
         assert.equal(SNIPPETS_TRIGGER_RE.test('<div'), false);
+    });
+});
+
+// ── Telemetry — diagnostics session aggregation ───────────────────────────────
+
+describe('telemetry-session — createDiagnosticsSession', () => {
+    it('starts at zero', () => {
+        const session = createDiagnosticsSession();
+        assert.deepEqual(session.snapshot(), { runs: 0, totalDiagnostics: 0 });
+    });
+
+    it('aggregates multiple runs into a single summed snapshot', () => {
+        const session = createDiagnosticsSession();
+        session.record(3);
+        session.record(0);
+        session.record(2);
+        // Three lint runs collapse to ONE session total, not three events.
+        assert.deepEqual(session.snapshot(), { runs: 3, totalDiagnostics: 5 });
+    });
+
+    it('snapshot is a stable copy, not a live reference', () => {
+        const session = createDiagnosticsSession();
+        session.record(1);
+        const first = session.snapshot();
+        session.record(4);
+        assert.deepEqual(first, { runs: 1, totalDiagnostics: 1 });
+        assert.deepEqual(session.snapshot(), { runs: 2, totalDiagnostics: 5 });
+    });
+
+    it('take hands off one aggregate and resets counters', () => {
+        const session = createDiagnosticsSession();
+        session.record(2);
+        session.record(1);
+        assert.deepEqual(session.take(), { runs: 2, totalDiagnostics: 3 });
+        assert.deepEqual(session.snapshot(), { runs: 0, totalDiagnostics: 0 });
+    });
+});
+
+// ── Telemetry — event catalogue matches telemetry.json ────────────────────────
+
+describe('telemetry — event names match telemetry.json catalogue', () => {
+    const catalogue = JSON.parse(
+        readFileSync(new URL('../telemetry.json', import.meta.url), 'utf8'),
+    );
+    const commonProperties = [
+        'extension',
+        'extensionVersion',
+        'os',
+        'vscodeVersion',
+        'distinct_id',
+        '$process_person_profile',
+    ];
+
+    it('uses the recognized top-level commonProperties/events structure', () => {
+        assert.deepEqual(Object.keys(catalogue).toSorted(), ['commonProperties', 'events']);
+        assert.deepEqual(
+            Object.keys(catalogue.commonProperties).toSorted(),
+            commonProperties.toSorted(),
+        );
+    });
+
+    it('catalogues every runtime event and no unused event', () => {
+        assert.deepEqual(Object.keys(catalogue.events).toSorted(), EMITTED_EVENTS.toSorted());
+    });
+
+    it('matches runtime event properties and measures bidirectionally', () => {
+        for (const eventName of EMITTED_EVENTS) {
+            assert.deepEqual(
+                Object.keys(catalogue.events[eventName].properties ?? {}).toSorted(),
+                EVENT_PROPERTIES[eventName].toSorted(),
+            );
+            assert.deepEqual(
+                Object.keys(catalogue.events[eventName].measures ?? {}).toSorted(),
+                EVENT_MEASURES[eventName].toSorted(),
+            );
+        }
+    });
+
+    it('classifies distinct_id as EndUserPseudonymizedInformation', () => {
+        const field = catalogue.commonProperties.distinct_id;
+        assert.equal(field.classification, 'EndUserPseudonymizedInformation');
+        assert.match(
+            field.comment,
+            /pseudonymous/i,
+            'comment must explain that distinct_id is a pseudonymous identifier',
+        );
+        assert.match(
+            field.comment,
+            /without identifying who the user is/i,
+            'comment must explain that the identifier cannot identify the person',
+        );
+    });
+});
+
+// ── Telemetry — reporter respects VS Code telemetry setting ───────────────────
+
+describe('telemetry — TelemetryReporter consent gate', () => {
+    let TelemetryReporter;
+    let stub;
+    let sentBatches;
+    let originalFetch;
+
+    before(async () => {
+        // Loaded via the registered vscode loader; telemetry.ts imports the stub.
+        ({ TelemetryReporter } = await import('../src/telemetry.ts'));
+        stub = await import('./vscode-stub.mjs');
+    });
+
+    beforeEach(() => {
+        // Reset consent to enabled and capture outgoing POSTs instead of hitting the network.
+        stub.__setTelemetryEnabled(true);
+        sentBatches = [];
+        originalFetch = globalThis.fetch;
+        globalThis.fetch = (_url, options) => {
+            sentBatches.push(JSON.parse(options.body).batch);
+            return Promise.resolve({ ok: true });
+        };
+    });
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    /**
+     * Builds a reporter with the fixed test identity.
+     *
+     * @returns {object} A fresh TelemetryReporter instance.
+     */
+    function makeReporter() {
+        return new TelemetryReporter({
+            extensionName: 'mso-conditionals',
+            extensionVersion: '9.9.9',
+        });
+    }
+
+    it('sends a batch when telemetry is enabled', async () => {
+        const reporter = makeReporter();
+        reporter.track(EVENT_ACTIVATED, { coInstalledInPack: false });
+        await reporter.disposeAsync();
+        assert.equal(sentBatches.length, 1);
+        assert.equal(sentBatches[0][0].event, EVENT_ACTIVATED);
+    });
+
+    it('no-ops (never POSTs) when telemetry is disabled at construction', () => {
+        stub.__setTelemetryEnabled(false);
+        const reporter = makeReporter();
+        reporter.track(EVENT_ACTIVATED);
+        reporter.track(EVENT_DIAGNOSTICS_RUN, { runs: 1, totalDiagnostics: 2 });
+        reporter.flush();
+        reporter.dispose();
+        assert.equal(sentBatches.length, 0);
+    });
+
+    it('re-checks on onDidChangeTelemetryEnabled: drops queued events when turned off', () => {
+        const reporter = makeReporter();
+        // Enqueue while enabled, then turn telemetry OFF before the flush fires.
+        reporter.track(EVENT_ACTIVATED);
+        stub.__setTelemetryEnabled(false);
+        reporter.flush();
+        reporter.dispose();
+        assert.equal(sentBatches.length, 0, 'queued events must be dropped when telemetry is off');
+    });
+
+    it('re-checks on onDidChangeTelemetryEnabled: resumes sending when turned back on', () => {
+        const reporter = makeReporter();
+        stub.__setTelemetryEnabled(false);
+        reporter.track(EVENT_ACTIVATED); // dropped
+        stub.__setTelemetryEnabled(true);
+        reporter.track(EVENT_DIAGNOSTICS_RUN, { runs: 2, totalDiagnostics: 3 });
+        reporter.flush();
+        reporter.dispose();
+        assert.equal(sentBatches.length, 1);
+        assert.equal(sentBatches[0][0].event, EVENT_DIAGNOSTICS_RUN);
+    });
+
+    it('sends events anonymously (machineId + $process_person_profile:false)', () => {
+        const reporter = makeReporter();
+        reporter.track(EVENT_ACTIVATED);
+        reporter.flush();
+        reporter.dispose();
+        const props = sentBatches[0][0].properties;
+        assert.equal(props.$process_person_profile, false);
+        assert.equal(props.distinct_id, 'test-machine-id');
+        assert.equal(props.extension, 'mso-conditionals');
+    });
+
+    it('aborts a held in-flight request when telemetry is disabled', async () => {
+        const reporter = makeReporter();
+        let observedSignal;
+        globalThis.fetch = (_url, options) => {
+            observedSignal = options.signal;
+            return new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+            });
+        };
+        reporter.track(EVENT_ACTIVATED);
+        reporter.flush();
+        assert.equal(observedSignal.aborted, false);
+        stub.__setTelemetryEnabled(false);
+        assert.equal(observedSignal.aborted, true);
+        reporter.dispose();
+    });
+
+    it('awaits the final fetch before disposeAsync resolves', async () => {
+        const reporter = makeReporter();
+        let release;
+        let resolved = false;
+        globalThis.fetch = () =>
+            new Promise((resolve) => {
+                release = () => resolve({ ok: true });
+            });
+        reporter.track(EVENT_ACTIVATED);
+        const disposal = reporter.disposeAsync(1000).then(() => {
+            resolved = true;
+        });
+        await Promise.resolve();
+        assert.equal(resolved, false);
+        release();
+        await disposal;
+        assert.equal(resolved, true);
+    });
+
+    it('can be disposed twice without sending twice', async () => {
+        const reporter = makeReporter();
+        reporter.track(EVENT_ACTIVATED);
+        await reporter.disposeAsync();
+        await reporter.disposeAsync();
+        reporter.dispose();
+        assert.equal(sentBatches.length, 1);
+    });
+});
+
+// ── Telemetry — real extension lifecycle and diagnostics aggregation ──────────
+
+describe('telemetry — extension integration', () => {
+    let stub;
+    let extension;
+    let sentBatches;
+    let originalFetch;
+    let context;
+
+    before(async () => {
+        stub = await import('./vscode-stub.mjs');
+        extension = await import('../src/extension.ts');
+    });
+
+    beforeEach(() => {
+        stub.__reset();
+        sentBatches = [];
+        originalFetch = globalThis.fetch;
+        globalThis.fetch = (_url, options) => {
+            sentBatches.push(JSON.parse(options.body).batch);
+            return Promise.resolve({ ok: true });
+        };
+        context = {
+            extension: { id: 'joernberkefeld.mso-conditionals', packageJSON: { version: '9.9.9' } },
+            subscriptions: [],
+        };
+    });
+
+    afterEach(async () => {
+        await extension.deactivate();
+        for (const disposable of context.subscriptions) {
+            disposable.dispose();
+        }
+        globalThis.fetch = originalFetch;
+    });
+
+    it('activates, lints through the real path, and awaits one final aggregate fetch', async () => {
+        stub.__setTextDocuments([document(['<!--[if mso 99]>'])]);
+        extension.activate(context);
+        await extension.deactivate();
+        const events = sentBatches.flat();
+        assert.equal(events.filter((event) => event.event === EVENT_DIAGNOSTICS_RUN).length, 1);
+        const diagnosticEvent = events.find((event) => event.event === EVENT_DIAGNOSTICS_RUN);
+        assert.equal(diagnosticEvent.properties.runs, 1);
+        assert.equal(diagnosticEvent.properties.totalDiagnostics, 1);
+    });
+
+    it('excludes and resets aggregates across enabled-disabled-enabled transitions', async () => {
+        const badDocument = document(['<!--[if mso 99]>']);
+        extension.activate(context);
+        stub.__fireChangeDocument(badDocument);
+        stub.__setTelemetryEnabled(false);
+        stub.__fireChangeDocument(badDocument);
+        stub.__setTelemetryEnabled(true);
+        stub.__fireChangeDocument(badDocument);
+        await extension.deactivate();
+        const diagnosticEvents = sentBatches
+            .flat()
+            .filter((event) => event.event === EVENT_DIAGNOSTICS_RUN);
+        assert.equal(diagnosticEvents.length, 1);
+        assert.equal(diagnosticEvents[0].properties.runs, 1);
+        assert.equal(diagnosticEvents[0].properties.totalDiagnostics, 1);
+    });
+
+    it('periodically hands off one aggregate and resets before final deactivate', async () => {
+        const badDocument = document(['<!--[if mso 99]>']);
+        extension.activate(context);
+        stub.__fireChangeDocument(badDocument);
+        stub.__fireChangeDocument(badDocument);
+        extension.flushDiagnosticsAggregate();
+        stub.__fireChangeDocument(badDocument);
+        await extension.deactivate();
+        const diagnosticEvents = sentBatches
+            .flat()
+            .filter((event) => event.event === EVENT_DIAGNOSTICS_RUN);
+        assert.equal(diagnosticEvents.length, 2);
+        assert.deepEqual(
+            diagnosticEvents.map((event) => [
+                event.properties.runs,
+                event.properties.totalDiagnostics,
+            ]),
+            [
+                [2, 2],
+                [1, 1],
+            ],
+        );
+    });
+
+    it('starts one 300000ms unreferenced interval and clears it once on deactivate', async () => {
+        const created = [];
+        const handle = {
+            unrefCount: 0,
+            unref() {
+                this.unrefCount += 1;
+            },
+        };
+        let clearCount = 0;
+        extension.activate(context, {
+            setInterval(callback, ms) {
+                created.push({ callback, ms });
+                return handle;
+            },
+            clearInterval(timer) {
+                assert.equal(timer, handle);
+                clearCount += 1;
+            },
+        });
+        assert.equal(created.length, 1, 'interval must be created once');
+        assert.equal(created[0].ms, 300000);
+        assert.equal(created[0].ms, DIAGNOSTICS_HANDOFF_INTERVAL_MS);
+        assert.equal(handle.unrefCount, 1, 'unref must be called once where available');
+        await extension.deactivate();
+        assert.equal(clearCount, 1, 'interval must be cleared exactly once at deactivate');
+        for (const disposable of context.subscriptions) {
+            disposable.dispose();
+        }
+        assert.equal(
+            clearCount,
+            1,
+            'disposing subscriptions must not clear the interval a second time',
+        );
+    });
+
+    it('accepts a numeric timer id with no unref and still clears once', async () => {
+        const created = [];
+        let clearCount = 0;
+        const numericHandle = 42;
+        extension.activate(context, {
+            setInterval(callback, ms) {
+                created.push({ callback, ms });
+                return numericHandle;
+            },
+            clearInterval(timer) {
+                assert.equal(timer, numericHandle);
+                clearCount += 1;
+            },
+        });
+        assert.equal(created.length, 1);
+        assert.equal(created[0].ms, 300000);
+        await extension.deactivate();
+        assert.equal(clearCount, 1);
+    });
+});
+
+describe('diagnostics-timer — unref portability', () => {
+    it('calls unref once on a Node-style timeout handle', () => {
+        let unrefCount = 0;
+        unrefIfSupported({
+            unref() {
+                unrefCount += 1;
+            },
+        });
+        assert.equal(unrefCount, 1);
+    });
+
+    it('no-ops for a numeric DOM-style timer id', () => {
+        unrefIfSupported(123);
     });
 });

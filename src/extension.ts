@@ -2,94 +2,153 @@ import * as vscode from 'vscode';
 import { MsoHoverProvider } from './hover';
 import { MsoCompletionProvider } from './completion';
 import { diagnoseDocument } from './diagnostics';
+import { TelemetryReporter, detectEcosystem } from './telemetry';
+import {
+    createDiagnosticsSession,
+    EVENT_ACTIVATED,
+    EVENT_DIAGNOSTICS_RUN,
+} from './telemetry-session.js';
+import {
+    DIAGNOSTICS_HANDOFF_INTERVAL_MS,
+    clearDiagnosticsInterval,
+    startUnreferencedInterval,
+    type IntervalHandle,
+    type IntervalScheduler,
+} from './diagnostics-timer';
 
-/** Languages for which the providers are registered. */
 const TARGET_LANGUAGES = ['html', 'ampscript', 'sfmc', 'ssjs', 'handlebars'];
 
-/** Shared DiagnosticCollection — populated on open/change, cleared on close. */
 let diagnosticCollection: vscode.DiagnosticCollection;
+let reporter: TelemetryReporter | undefined;
+let diagnosticsSession = createDiagnosticsSession();
+let diagnosticsTimer: IntervalHandle | undefined;
+let diagnosticsTimerScheduler: IntervalScheduler | undefined;
+let telemetryConsentSubscription: vscode.Disposable | undefined;
 
-/**
- * Returns true when the user has not disabled built-in diagnostics.
- *
- * @returns {boolean} True if diagnostics are enabled.
- */
+/** @returns True if built-in diagnostics are enabled. */
 function isDiagnosticsEnabled(): boolean {
     return vscode.workspace
         .getConfiguration('msoConditionals')
         .get<boolean>('diagnostics.enable', true);
 }
 
-/**
- * Runs diagnostics on a single document and updates the collection.
- * Clears existing diagnostics for the document when the feature is disabled.
- *
- * @param document - VS Code text document to analyse.
- */
+/** @param document - VS Code text document to analyse. */
 function lintDocument(document: vscode.TextDocument): void {
     if (!TARGET_LANGUAGES.includes(document.languageId)) {
         return;
     }
-
     if (!isDiagnosticsEnabled()) {
         diagnosticCollection.delete(document.uri);
         return;
     }
 
-    diagnosticCollection.set(document.uri, diagnoseDocument(document));
+    const diagnostics = diagnoseDocument(document);
+    diagnosticCollection.set(document.uri, diagnostics);
+    if (reporter?.isEnabled()) {
+        diagnosticsSession.record(diagnostics.length);
+    }
 }
 
-/**
- * Runs diagnostics on all currently open text documents.
- * Called at activation and whenever the `msoConditionals` configuration changes.
- */
+/** Lints all currently open documents. */
 function lintAllOpen(): void {
     for (const document of vscode.workspace.textDocuments) {
         lintDocument(document);
     }
 }
 
+/** Hands a meaningful aggregate to the reporter and resets counters after handoff. */
+export function flushDiagnosticsAggregate(): void {
+    if (!reporter?.isEnabled()) {
+        return;
+    }
+    const totals = diagnosticsSession.snapshot();
+    if (totals.runs === 0) {
+        return;
+    }
+    reporter.track(EVENT_DIAGNOSTICS_RUN, diagnosticsSession.take());
+}
+
+/**
+ * Stops the diagnostics handoff interval exactly once.
+ */
+function stopDiagnosticsTimer(): void {
+    if (diagnosticsTimer === undefined) {
+        return;
+    }
+    clearDiagnosticsInterval(diagnosticsTimer, diagnosticsTimerScheduler);
+    diagnosticsTimer = undefined;
+    diagnosticsTimerScheduler = undefined;
+}
+
 /**
  * Extension activation entrypoint.
- * Registers the MSO hover, completion, and diagnostics providers for all target languages.
  *
  * @param context - VS Code extension context.
+ * @param timers - Optional timer seam for tests; production uses platform timers.
  */
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext, timers?: IntervalScheduler): void {
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mso-conditionals');
+    diagnosticsSession = createDiagnosticsSession();
+    reporter = new TelemetryReporter({
+        extensionName: 'mso-conditionals',
+        extensionVersion: context.extension.packageJSON.version,
+    });
+    telemetryConsentSubscription = reporter.onDidChangeEnabled((enabled) => {
+        if (!enabled) {
+            diagnosticsSession.reset();
+        }
+    });
+    context.subscriptions.push(reporter, telemetryConsentSubscription);
+    reporter.track(EVENT_ACTIVATED, detectEcosystem(context.extension.id));
 
     const hoverProvider = vscode.languages.registerHoverProvider(
-        TARGET_LANGUAGES.map((lang) => ({ language: lang })),
+        TARGET_LANGUAGES.map((language) => ({ language })),
         new MsoHoverProvider(),
     );
-
     const completionProvider = vscode.languages.registerCompletionItemProvider(
-        TARGET_LANGUAGES.map((lang) => ({ language: lang })),
+        TARGET_LANGUAGES.map((language) => ({ language })),
         new MsoCompletionProvider(),
-        '[', // trigger character
+        '[',
     );
 
-    // Lint documents that are already open when the extension activates.
     lintAllOpen();
+    diagnosticsTimerScheduler = timers;
+    diagnosticsTimer = startUnreferencedInterval(
+        flushDiagnosticsAggregate,
+        DIAGNOSTICS_HANDOFF_INTERVAL_MS,
+        timers,
+    );
 
     context.subscriptions.push(
         diagnosticCollection,
         hoverProvider,
         completionProvider,
         vscode.workspace.onDidOpenTextDocument(lintDocument),
-        vscode.workspace.onDidChangeTextDocument((e) => lintDocument(e.document)),
-        vscode.workspace.onDidCloseTextDocument((doc) => diagnosticCollection.delete(doc.uri)),
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('msoConditionals')) {
+        vscode.workspace.onDidChangeTextDocument((event) => lintDocument(event.document)),
+        vscode.workspace.onDidCloseTextDocument((document) =>
+            diagnosticCollection.delete(document.uri),
+        ),
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('msoConditionals')) {
                 lintAllOpen();
             }
+        }),
+        new vscode.Disposable(() => {
+            stopDiagnosticsTimer();
         }),
     );
 }
 
-/**
- * Extension deactivation entrypoint.
- */
-export function deactivate(): void {
-    // DiagnosticCollection is disposed via context.subscriptions.
+/** Performs a final aggregate handoff and bounded transport drain. */
+export async function deactivate(): Promise<void> {
+    stopDiagnosticsTimer();
+    if (!reporter) {
+        return;
+    }
+    flushDiagnosticsAggregate();
+    const currentReporter = reporter;
+    reporter = undefined;
+    telemetryConsentSubscription?.dispose();
+    telemetryConsentSubscription = undefined;
+    await currentReporter.disposeAsync();
 }

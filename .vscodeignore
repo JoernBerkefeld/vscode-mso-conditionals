@@ -17,4 +17,6 @@ eslint.config.mjs
 .prettierrc
 .prettierignore
 package-lock.json
+scripts/**
 !out/extension.js
+!telemetry.json
