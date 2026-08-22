@@ -2,7 +2,7 @@
     "name": "mso-conditionals",
     "displayName": "MSO Conditional Comments",
     "description": "IntelliSense for MSO (Outlook) conditional comments in HTML email — hover translations, completions, and more.",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "publisher": "joernberkefeld",
     "author": "Jörn Berkefeld",
     "license": "MIT",
