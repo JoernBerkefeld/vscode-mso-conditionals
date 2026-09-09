@@ -447,6 +447,129 @@ describe('telemetry — event names match telemetry.json catalogue', () => {
     });
 });
 
+/**
+ * Builds an installed but inactive extension fixture.
+ *
+ * @param {string} id - Exact extension identifier.
+ * @param {object} packageJSON - Optional dependency and pack declarations.
+ * @returns {object} Registry entry.
+ */
+function installed(id, packageJSON = {}) {
+    return { id, isActive: false, packageJSON };
+}
+
+describe('telemetry — real ecosystem detector', () => {
+    const selfId = 'joernberkefeld.mso-conditionals';
+    const requestedNeighbors = {
+        'neighbor.xnerd.ampscript-language': 'xnerd.ampscript-language',
+        'neighbor.esbenp.prettier-vscode': 'esbenp.prettier-vscode',
+        'neighbor.dbaeumer.vscode-eslint': 'dbaeumer.vscode-eslint',
+        'neighbor.MarketingThibs.ampscriptsnippets': 'MarketingThibs.ampscriptsnippets',
+        'neighbor.markdown-preview-bitbucket-innersource':
+            'joernberkefeld.markdown-preview-bitbucket-innersource',
+    };
+    let detectEcosystem;
+    let stub;
+    let originalAll;
+    let originalGetExtension;
+
+    before(async () => {
+        ({ detectEcosystem } = await import('../src/telemetry.ts'));
+        stub = await import('./vscode-stub.mjs');
+    });
+
+    beforeEach(() => {
+        originalAll = stub.extensions.all;
+        originalGetExtension = stub.extensions.getExtension;
+        stub.extensions.all = [];
+    });
+
+    afterEach(() => {
+        stub.extensions.all = originalAll;
+        stub.extensions.getExtension = originalGetExtension;
+    });
+
+    for (const presentIds of [
+        [],
+        Object.values(requestedNeighbors),
+        ...Object.values(requestedNeighbors).map((id) => [id]),
+    ]) {
+        it(`maps installed inactive neighbors exactly: ${presentIds.join(', ') || 'none'}`, () => {
+            stub.extensions.all = presentIds.map((id) => installed(id));
+            const result = detectEcosystem(selfId);
+            for (const [key, id] of Object.entries(requestedNeighbors)) {
+                assert.equal(result[key], presentIds.includes(id), key);
+            }
+            assert.deepEqual(
+                Object.keys(result).toSorted(),
+                EVENT_PROPERTIES[EVENT_ACTIVATED].toSorted(),
+            );
+            assert.ok(Object.values(result).every((value) => typeof value === 'boolean'));
+            assert.equal(result.coInstalledAsDependency, false);
+            assert.equal(result.coInstalledInPack, false);
+        });
+    }
+
+    it('looks up exact allowlisted IDs without leaking unknown extensions', () => {
+        const lookups = [];
+        stub.extensions.all = [installed('unknown.private-extension')];
+        stub.extensions.getExtension = (id) => {
+            lookups.push(id);
+            return originalGetExtension(id);
+        };
+        const result = detectEcosystem(selfId);
+        for (const id of Object.values(requestedNeighbors)) {
+            assert.ok(lookups.includes(id), id);
+        }
+        assert.ok(!lookups.includes(selfId));
+        assert.ok(!lookups.includes('unknown.private-extension'));
+        assert.ok(!JSON.stringify(result).includes('unknown.private-extension'));
+        assert.ok(Object.values(result).every((value) => value === false));
+    });
+
+    it('excludes self from neighbor, dependency, and pack signals', () => {
+        stub.extensions.all = [
+            installed(selfId, { extensionDependencies: [selfId], extensionPack: [selfId] }),
+        ];
+        const result = detectEcosystem(selfId);
+        assert.equal(Object.hasOwn(result, 'neighbor.mso-conditionals'), false);
+        assert.equal(result.coInstalledAsDependency, false);
+        assert.equal(result.coInstalledInPack, false);
+    });
+
+    it('preserves existing neighbor and independent dependency/pack detection', () => {
+        for (const packageJSON of [
+            { extensionDependencies: [selfId] },
+            { extensionPack: [selfId] },
+            { extensionDependencies: [selfId], extensionPack: [selfId] },
+        ]) {
+            stub.extensions.all = [
+                installed('joernberkefeld.sfmc-extension-pack', packageJSON),
+                installed('sergey-agadzhanov.ampscript'),
+            ];
+            const result = detectEcosystem(selfId);
+            assert.equal(result['neighbor.sfmc-extension-pack'], true);
+            assert.equal(result['neighbor.sergey-agadzhanov.ampscript'], true);
+            assert.equal(
+                result.coInstalledAsDependency,
+                Boolean(packageJSON.extensionDependencies),
+            );
+            assert.equal(result.coInstalledInPack, Boolean(packageJSON.extensionPack));
+        }
+    });
+
+    it('classifies every requested presence property as system metadata for feature insight', () => {
+        const catalogue = JSON.parse(
+            readFileSync(new URL('../telemetry.json', import.meta.url), 'utf8'),
+        );
+        for (const key of Object.keys(requestedNeighbors)) {
+            const field = catalogue.events[EVENT_ACTIVATED].properties[key];
+            assert.equal(field.classification, 'SystemMetaData');
+            assert.equal(field.purpose, 'FeatureInsight');
+        }
+    });
+});
+
 // ── Telemetry — reporter respects VS Code telemetry setting ───────────────────
 
 describe('telemetry — TelemetryReporter consent gate', () => {
@@ -626,6 +749,25 @@ describe('telemetry — extension integration', () => {
         extension.activate(context);
         await extension.deactivate();
         const events = sentBatches.flat();
+        const activation = events.find((event) => event.event === EVENT_ACTIVATED);
+        const catalogue = JSON.parse(
+            readFileSync(new URL('../telemetry.json', import.meta.url), 'utf8'),
+        );
+        assert.deepEqual(
+            Object.keys(activation.properties).toSorted(),
+            [
+                'distinct_id',
+                '$process_person_profile',
+                'extension',
+                'extensionVersion',
+                'os',
+                'vscodeVersion',
+                ...EVENT_PROPERTIES[EVENT_ACTIVATED],
+            ].toSorted(),
+        );
+        for (const key of Object.keys(catalogue.events[EVENT_ACTIVATED].properties)) {
+            assert.equal(typeof activation.properties[key], 'boolean', key);
+        }
         assert.equal(events.filter((event) => event.event === EVENT_DIAGNOSTICS_RUN).length, 1);
         const diagnosticEvent = events.find((event) => event.event === EVENT_DIAGNOSTICS_RUN);
         assert.equal(diagnosticEvent.properties.runs, 1);

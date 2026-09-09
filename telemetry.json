@@ -46,6 +46,26 @@
                     "purpose": "FeatureInsight",
                     "comment": "Whether another installed extension includes this extension in its pack."
                 },
+                "neighbor.xnerd.ampscript-language": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether xnerd.ampscript-language is installed."
+                },
+                "neighbor.esbenp.prettier-vscode": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether esbenp.prettier-vscode is installed."
+                },
+                "neighbor.dbaeumer.vscode-eslint": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether dbaeumer.vscode-eslint is installed."
+                },
+                "neighbor.MarketingThibs.ampscriptsnippets": {
+                    "classification": "SystemMetaData",
+                    "purpose": "FeatureInsight",
+                    "comment": "Whether MarketingThibs.ampscriptsnippets is installed."
+                },
                 "neighbor.sergey-agadzhanov.ampscript": {
                     "classification": "SystemMetaData",
                     "purpose": "FeatureInsight",

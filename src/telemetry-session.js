@@ -12,6 +12,10 @@ export const EVENT_PROPERTIES = {
     [EVENT_ACTIVATED]: [
         'coInstalledAsDependency',
         'coInstalledInPack',
+        'neighbor.xnerd.ampscript-language',
+        'neighbor.esbenp.prettier-vscode',
+        'neighbor.dbaeumer.vscode-eslint',
+        'neighbor.MarketingThibs.ampscriptsnippets',
         'neighbor.sergey-agadzhanov.ampscript',
         'neighbor.FiB.ssjs-vsc',
         'neighbor.FiB.beautyAmp',

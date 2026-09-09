@@ -44,8 +44,8 @@ export class Diagnostic {
 
 export const extensions = {
     all: [],
-    getExtension() {
-        return undefined;
+    getExtension(id) {
+        return extensions.all.find((extension) => extension.id === id);
     },
 };
 

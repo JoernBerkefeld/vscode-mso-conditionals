@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0] — 2026-09-09
+
+### Changed
+
+- Extend activation telemetry's fixed presence-only allowlist with xnerd AMPscript Language, AMPscript Snippets, Prettier, and ESLint, preserving the existing Markdown Preview signal. Installed but inactive extensions count as present; no neighboring extension versions or full inventory are collected.
+
 ## [1.1.0] — 2026-08-22
 
 ### Added
