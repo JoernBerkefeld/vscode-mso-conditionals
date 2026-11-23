@@ -58,6 +58,8 @@
         "lint": "eslint src",
         "lint:fix": "eslint --fix src",
         "test": "node --test test/extension.test.mjs && node scripts/validate-telemetry-catalog.mjs",
+        "verify:own-dependencies-latest": "node scripts/verify-own-dependencies-latest.mjs",
+        "preversion": "npm run verify:own-dependencies-latest",
         "prepare": "husky || true",
         "format": "prettier --write .",
         "package": "npx @vscode/vsce package --no-dependencies",
